@@ -9,6 +9,13 @@ setup(
         'cachetools',
         'python-jose',
     ],
+    tests_require=[
+        "pytest",
+        "pytest-mock",
+        "pytest-cov",
+    ],
+    setup_requires=["pytest-runner"],
+    test_suite="tests",
     author='Dhinesh Kumar Sundaram',
     author_email='dhinesh.gs@gmail.com',
     description='A package for validating AWS Cognito tokens and using them as decorators in Flask routes or standalone Python functions',
