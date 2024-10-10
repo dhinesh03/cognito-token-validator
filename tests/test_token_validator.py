@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 import time
 import requests
 from cachetools import TTLCache
-from jose import JWTError
+from jose import jwt, JWTError
 from cognito_token_validator.validator import TokenValidator
 
 # Mock a complete JWKS key
@@ -24,9 +24,7 @@ mock_jwks = {
 mock_token_claims = {"aud": "client_id_123", "email": "test@example.com", "exp": time.time() + 3600}  # Expires in 1 hour
 
 # Use a valid Base64URL-encoded and padded mock JWT token
-mock_token = (
-    "eyJhbGciOiJSUzI1NiIsImtpZCI6Im1vY2tfa2lkIn0.eyJjbGllbnRfaWQiOiJ0ZXN0X2NsaWVudCIsImVtYWlsIjoidXNlckBleGFtcGxlLmNvbSJ9.c2lnbmF0dXJl"
-)
+mock_token = jwt.encode(mock_token_claims, "secret", algorithm="HS256")
 
 
 class TestTokenValidator(unittest.TestCase):
@@ -104,11 +102,18 @@ class TestTokenValidator(unittest.TestCase):
         result = self.validator.validate_token(mock_token)
         self.assertIsNone(result)
 
+    def test_token_missing_exp_claim(self):
+        """Test token with missing exp claim."""
+        claims = mock_token_claims.copy()
+        del claims['exp']
+        # Mocking the get_unverified_claims to return claims without 'exp'
+        with patch('jose.jwt.get_unverified_claims', return_value=claims):
+            result = self.validator.validate_token(mock_token)
+            self.assertIsNone(result)
+
     @patch('jose.jwt.get_unverified_header')
     @patch('jose.jwk.construct')
-    @patch('jose.jwt.get_unverified_claims', return_value=mock_token_claims)
-    @patch('jose.utils.base64url_decode')
-    def test_signature_verification_failed(self, mock_base64_decode, mock_get_claims, mock_jwk_construct, mock_get_header):
+    def test_signature_verification_failed(self, mock_jwk_construct, mock_get_header):
         """Test signature verification fails."""
         mock_get_header.return_value = {'kid': 'mock_kid'}
         mock_jwk = MagicMock()
@@ -118,11 +123,10 @@ class TestTokenValidator(unittest.TestCase):
         result = self.validator.validate_token(mock_token)
         self.assertIsNone(result)
 
-    @patch('jose.jwt.get_unverified_claims', return_value=mock_token_claims)
+    @patch('jose.jwt.get_unverified_claims')
     @patch('jose.jwk.construct')
     @patch('jose.jwt.get_unverified_header')
-    @patch('jose.utils.base64url_decode')
-    def test_wrong_audience(self, mock_base64_decode, mock_get_header, mock_jwk_construct, mock_get_claims):
+    def test_wrong_audience(self, mock_get_header, mock_jwk_construct, mock_get_claims):
         """Test token issued for the wrong audience."""
         wrong_aud_claims = mock_token_claims.copy()
         wrong_aud_claims['aud'] = 'wrong_client_id'
@@ -134,11 +138,10 @@ class TestTokenValidator(unittest.TestCase):
         result = self.validator.validate_token(mock_token)
         self.assertIsNone(result)
 
-    @patch('jose.jwt.get_unverified_claims', return_value=mock_token_claims)
+    @patch('jose.jwt.get_unverified_claims')
     @patch('jose.jwk.construct')
     @patch('jose.jwt.get_unverified_header')
-    @patch('jose.utils.base64url_decode')
-    def test_email_not_whitelisted(self, mock_base64_decode, mock_get_header, mock_jwk_construct, mock_get_claims):
+    def test_email_not_whitelisted(self, mock_get_header, mock_jwk_construct, mock_get_claims):
         """Test token email is not in the whitelist."""
         unlisted_email_claims = mock_token_claims.copy()
         unlisted_email_claims['email'] = 'unlisted@example.com'
@@ -150,11 +153,10 @@ class TestTokenValidator(unittest.TestCase):
         result = self.validator.validate_token(mock_token)
         self.assertIsNone(result)
 
-    @patch('jose.jwt.get_unverified_claims', return_value=mock_token_claims)
+    @patch('jose.jwt.get_unverified_claims')
     @patch('jose.jwk.construct')
     @patch('jose.jwt.get_unverified_header')
-    @patch('jose.utils.base64url_decode')
-    def test_token_expired(self, mock_base64_decode, mock_get_header, mock_jwk_construct, mock_get_claims):
+    def test_token_expired(self, mock_get_header, mock_jwk_construct, mock_get_claims):
         """Test token is expired."""
         expired_claims = mock_token_claims.copy()
         expired_claims['exp'] = time.time() - 3600  # Expired 1 hour ago
@@ -166,11 +168,10 @@ class TestTokenValidator(unittest.TestCase):
         result = self.validator.validate_token(mock_token)
         self.assertIsNone(result)
 
-    @patch('jose.jwt.get_unverified_claims', return_value=mock_token_claims)
     @patch('jose.jwk.construct')
     @patch('jose.jwt.get_unverified_header')
-    @patch('jose.utils.base64url_decode')
-    def test_token_valid_and_cached(self, mock_base64_decode, mock_get_header, mock_jwk_construct, mock_get_claims):
+    # @patch('jose.utils.base64url_decode')
+    def test_token_valid_and_cached(self, mock_get_header, mock_jwk_construct):
         """Test token is valid and should be cached."""
         mock_get_header.return_value = {'kid': 'mock_kid'}
         mock_jwk_construct.return_value = MagicMock()
@@ -186,8 +187,7 @@ class TestTokenValidator(unittest.TestCase):
         result = self.validator.validate_token('invalid_token')
         self.assertIsNone(result)
 
-    @patch('cognito_token_validator.validator.TokenValidator.validate_token')
-    def test_token_required_no_auth_header(self, mock_validate_token):
+    def test_token_required_no_auth_header(self):
         """Test case when no authorization header is provided."""
         self.get_auth_header.return_value = None
 
@@ -200,8 +200,7 @@ class TestTokenValidator(unittest.TestCase):
         self.assertEqual(status_code, 400)
         self.assertEqual(response["message"], "Token not provided or malformed")
 
-    @patch('cognito_token_validator.validator.TokenValidator.validate_token')
-    def test_token_required_malformed_auth_header(self, mock_validate_token):
+    def test_token_required_malformed_auth_header(self):
         """Test case when Bearer token is malformed."""
         self.get_auth_header.return_value = "Invalid token"
 
@@ -214,8 +213,7 @@ class TestTokenValidator(unittest.TestCase):
         self.assertEqual(status_code, 400)
         self.assertEqual(response["message"], "Token not provided or malformed")
 
-    @patch('cognito_token_validator.validator.TokenValidator.validate_token')
-    def test_token_required_missing_token(self, mock_validate_token):
+    def test_token_required_missing_token(self):
         """Test case when token is missing after 'Bearer'."""
         self.get_auth_header.return_value = "Bearer "
 
@@ -228,8 +226,7 @@ class TestTokenValidator(unittest.TestCase):
         self.assertEqual(status_code, 403)
         self.assertEqual(response["message"], "Token is missing!")
 
-    @patch('cognito_token_validator.validator.TokenValidator.validate_token')
-    def test_token_required_malformed_token(self, mock_validate_token):
+    def test_token_required_malformed_token(self):
         """Test case when the token is malformed (not 3 parts)."""
         self.get_auth_header.return_value = "Bearer malformed.token"
 
