@@ -123,9 +123,9 @@ class TokenValidator:
                 auth_header = self.get_auth_header()
                 if not auth_header or not auth_header.startswith('Bearer '):
                     return json.dumps({'status': 'error', 'message': 'Token not provided or malformed'}), 400
-                token = auth_header.split()[1]
-
-                if not token:
+                try:
+                    token = auth_header.split()[1]
+                except IndexError:
                     return json.dumps({'status': 'error', 'message': 'Token is missing!'}), 403
 
                 # do some basic validation of the token structure
