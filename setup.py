@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='cognito_token_validator',
-    version='0.1.1',
+    version='0.1.2',
     packages=find_packages(),
     install_requires=[
         'requests',
@@ -27,5 +27,5 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
     ],
-    python_requires='>=3.6',
+    python_requires='>=3.9',
 )
