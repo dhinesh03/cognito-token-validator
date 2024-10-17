@@ -29,8 +29,8 @@ token_validator = TokenValidator(
     region='us-east-1',
     user_pool_id='your_user_pool_id',
     client_id='your_client_id',
-    permissions_str='{"whitelist": ["example@example.com"]}',
     get_auth_header=lambda: request.headers.get('Authorization'),
+    whitelisted_emails=['example@example.com']
 )
 ```
 
