@@ -9,7 +9,7 @@ from jose import jwt, jwk, JWTError
 from jose.utils import base64url_decode
 from functools import wraps
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 JWK = Dict[str, str]
 JWKS = Dict[str, List[JWK]]
@@ -97,7 +97,17 @@ class TokenValidator:
 
             decoded_token = jwt.get_unverified_claims(token)
 
-            if decoded_token['aud'] != self.client_id:
+            audience = None
+            if decoded_token['token_use'] == 'access':
+                audience = decoded_token['client_id']
+            elif decoded_token['token_use'] == 'id':
+                audience = decoded_token['aud']
+
+            if not audience:
+                logger.info('Token has no audience')
+                return None
+
+            if audience != self.client_id:
                 logger.info('Token was not issued for this audience')
                 return None
 
