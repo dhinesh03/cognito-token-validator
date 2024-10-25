@@ -20,11 +20,24 @@ mock_jwks = {
     ]
 }
 
+exp_time = time.time() + 3600
+
 # Mock a decoded JWT token with valid claims
-mock_token_claims = {"aud": "client_id_123", "email": "test@example.com", "exp": time.time() + 3600}  # Expires in 1 hour
+mock_token_claims = {"aud": "client_id_123", "email": "test@example.com", "token_use": "id", "exp": exp_time}
+mock_token_claims_for_access_token = {
+    "client_id": "client_id_123",
+    "email": "test@example.com",
+    "token_use": "access",
+    "exp": exp_time,
+}
+mock_token_claims_no_aud = {"email": "test@example.com", "token_use": "somethingelse", "exp": exp_time}
 
 # Use a valid Base64URL-encoded and padded mock JWT token
 mock_token = jwt.encode(mock_token_claims, "secret", algorithm="HS256")
+
+mock_token_no_aud = jwt.encode(mock_token_claims_no_aud, "secret", algorithm="HS256")
+
+mock_token_with_access_token = jwt.encode(mock_token_claims_for_access_token, "secret", algorithm="HS256")
 
 
 class TestTokenValidator(unittest.TestCase):
@@ -170,7 +183,6 @@ class TestTokenValidator(unittest.TestCase):
 
     @patch('jose.jwk.construct')
     @patch('jose.jwt.get_unverified_header')
-    # @patch('jose.utils.base64url_decode')
     def test_token_valid_and_cached(self, mock_get_header, mock_jwk_construct):
         """Test token is valid and should be cached."""
         mock_get_header.return_value = {'kid': 'mock_kid'}
@@ -180,6 +192,28 @@ class TestTokenValidator(unittest.TestCase):
         result = self.validator.validate_token(mock_token)
         self.assertEqual(result, mock_token_claims)
         self.assertIn(mock_token, self.validator.token_cache)
+        self.validator.token_cache.pop(mock_token)
+
+    @patch('jose.jwk.construct')
+    @patch('jose.jwt.get_unverified_header')
+    def test_access_token(self, mock_get_header, mock_jwk_construct):
+        """Test access token validation."""
+        mock_get_header.return_value = {'kid': 'mock_kid'}
+        mock_jwk_construct.return_value = MagicMock()
+        mock_jwk_construct.return_value.verify.return_value = True
+
+        result = self.validator.validate_token(mock_token_with_access_token)
+        self.assertEqual(result, mock_token_claims_for_access_token)
+
+    @patch('jose.jwk.construct')
+    @patch('jose.jwt.get_unverified_header')
+    def test_token_no_audience(self, mock_get_header, mock_jwk_construct):
+        """Test token has no audience."""
+        mock_get_header.return_value = {'kid': 'mock_kid'}
+        mock_jwk_construct.return_value = MagicMock()
+        mock_jwk_construct.return_value.verify.return_value = True
+        result = self.validator.validate_token(mock_token_no_aud)
+        self.assertIsNone(result)
 
     @patch('jose.jwt.get_unverified_header', side_effect=JWTError)
     def test_invalid_token_format(self, mock_get_header):
